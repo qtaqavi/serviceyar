@@ -1,0 +1,8 @@
+{
+  "name": "سرویس‌یار",
+  "description": "اپلیکیشن ثبت، مدیریت و یادآوری موعد سرویس‌های دوره‌ای (ماهانه، سالانه و سفارشی) ابزارآلات و تجهیزات بر اساس تقویم هجری شمسی",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
