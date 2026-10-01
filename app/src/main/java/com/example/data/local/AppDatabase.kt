@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
         ServiceScheduleEntity::class,
         ServiceLogEntity::class
     ],
-    version = 1,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Engineering
 import androidx.compose.material.icons.filled.Person
@@ -96,13 +97,53 @@ fun AddEditServiceDialog(
         mutableStateOf((scheduleToEdit?.customIntervalDays ?: 30).toString())
     }
 
+    val isVehicle = selectedTool.isVehicle()
+    var intervalKmStr by remember {
+        mutableStateOf(
+            if ((scheduleToEdit?.intervalKilometers ?: 0) > 0) {
+                scheduleToEdit!!.intervalKilometers.toString()
+            } else if (isVehicle) "5000" else ""
+        )
+    }
+    var dailyKmStr by remember {
+        mutableStateOf(
+            if ((scheduleToEdit?.dailyKilometers ?: 0) > 0) {
+                scheduleToEdit!!.dailyKilometers.toString()
+            } else if (isVehicle) "50" else ""
+        )
+    }
+    var lastKmStr by remember {
+        mutableStateOf(
+            if ((scheduleToEdit?.lastServiceOdometerKm ?: 0) > 0) {
+                scheduleToEdit!!.lastServiceOdometerKm.toString()
+            } else if (isVehicle && selectedTool.currentOdometerKm > 0) {
+                selectedTool.currentOdometerKm.toString()
+            } else ""
+        )
+    }
+    var nextKmStr by remember {
+        mutableStateOf(
+            if ((scheduleToEdit?.nextServiceOdometerKm ?: 0) > 0) {
+                scheduleToEdit!!.nextServiceOdometerKm.toString()
+            } else ""
+        )
+    }
+
     val now = JalaliCalendar.now()
     var lastServiceDateJalali by remember {
         mutableStateOf(scheduleToEdit?.lastServiceDateJalali ?: now.toStandardString())
     }
     var nextServiceDateJalali by remember {
-        val initialNext = scheduleToEdit?.nextServiceDateJalali
-            ?: JalaliCalendar.addMonths(now, 12).toStandardString()
+        val initialNext = scheduleToEdit?.nextServiceDateJalali ?: run {
+            val initIntervalKm = intervalKmStr.toIntOrNull() ?: 0
+            val initDailyKm = dailyKmStr.toIntOrNull() ?: 0
+            if (isVehicle && initIntervalKm > 0 && initDailyKm > 0) {
+                val cycleDays = ((initIntervalKm + initDailyKm - 1) / initDailyKm).coerceAtLeast(1)
+                JalaliCalendar.addDays(now, cycleDays).toStandardString()
+            } else {
+                JalaliCalendar.addMonths(now, 12).toStandardString()
+            }
+        }
         mutableStateOf(initialNext)
     }
     var expiryDateJalali by remember {
@@ -121,11 +162,32 @@ fun AddEditServiceDialog(
     var notes by remember { mutableStateOf(scheduleToEdit?.notes ?: "") }
 
     var toolDropdownExpanded by remember { mutableStateOf(false) }
+    var priorityDropdownExpanded by remember { mutableStateOf(false) }
     var datePickerTarget by remember { mutableStateOf<DatePickerTarget?>(null) }
     var titleError by remember { mutableStateOf(false) }
 
+    fun syncMileageToNextDate(newIntervalKmStr: String = intervalKmStr, newDailyKmStr: String = dailyKmStr) {
+        val intervalKm = newIntervalKmStr.toIntOrNull() ?: 0
+        val dailyKm = newDailyKmStr.toIntOrNull() ?: 0
+        if (intervalKm > 0 && dailyKm > 0) {
+            val cycleDays = ((intervalKm + dailyKm - 1) / dailyKm).coerceAtLeast(1)
+            val lastDate = JalaliCalendar.parse(lastServiceDateJalali) ?: now
+            selectedIntervalType = IntervalType.CUSTOM_DAYS
+            customDaysStr = cycleDays.toString()
+            nextServiceDateJalali = JalaliCalendar.addDays(lastDate, cycleDays).toStandardString()
+        }
+    }
+
     fun calculateNextDateAutomatically() {
         val lastDate = JalaliCalendar.parse(lastServiceDateJalali) ?: now
+        val intervalKm = intervalKmStr.toIntOrNull() ?: 0
+        val dailyKm = dailyKmStr.toIntOrNull() ?: 0
+        if (isVehicle && intervalKm > 0 && dailyKm > 0 && selectedIntervalType == IntervalType.CUSTOM_DAYS) {
+            val cycleDays = ((intervalKm + dailyKm - 1) / dailyKm).coerceAtLeast(1)
+            customDaysStr = cycleDays.toString()
+            nextServiceDateJalali = JalaliCalendar.addDays(lastDate, cycleDays).toStandardString()
+            return
+        }
         val next = when (selectedIntervalType) {
             IntervalType.MONTHLY -> JalaliCalendar.addMonths(lastDate, 1)
             IntervalType.QUARTERLY -> JalaliCalendar.addMonths(lastDate, 3)
@@ -199,6 +261,19 @@ fun AddEditServiceDialog(
                                         text = { Text(t.name) },
                                         onClick = {
                                             selectedTool = t
+                                            if (!t.isVehicle()) {
+                                                intervalKmStr = ""
+                                                dailyKmStr = ""
+                                                lastKmStr = ""
+                                                nextKmStr = ""
+                                            } else if (intervalKmStr.isBlank()) {
+                                                intervalKmStr = "5000"
+                                                dailyKmStr = "50"
+                                                if (t.currentOdometerKm > 0) {
+                                                    lastKmStr = t.currentOdometerKm.toString()
+                                                    nextKmStr = (t.currentOdometerKm + 5000).toString()
+                                                }
+                                            }
                                             toolDropdownExpanded = false
                                         }
                                     )
@@ -261,8 +336,10 @@ fun AddEditServiceDialog(
                                 label = {
                                     Text(
                                         text = st.titlePersian,
-                                        fontSize = 12.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 },
                                 colors = FilterChipDefaults.filterChipColors(
@@ -303,8 +380,10 @@ fun AddEditServiceDialog(
                                 label = {
                                     Text(
                                         text = interval.titlePersian,
-                                        fontSize = 12.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             )
@@ -411,45 +490,165 @@ fun AddEditServiceDialog(
                             .clickable { datePickerTarget = DatePickerTarget.EXPIRY }
                     )
 
-                    // Priority Chips
-                    Text(
-                        text = "میزان اهمیت و فوریت سرویس:",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    // Vehicle Mileage / Kilometer Tracking (without cluttering preset buttons)
+                    if (isVehicle) {
+                        Text(
+                            text = "دوره تکرار کیلومتری و پیمایش روزانه خودرو:",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        ServicePriority.entries.forEach { prio ->
-                            val isSelected = prio == selectedPriority
-                            val prioColor = Color(prio.colorHex)
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { selectedPriority = prio },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.PriorityHigh,
-                                        contentDescription = null,
-                                        tint = if (isSelected) Color.White else prioColor,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                },
-                                label = {
+                        OutlinedTextField(
+                            value = intervalKmStr,
+                            onValueChange = {
+                                val cleaned = JalaliCalendar.toEnglishDigits(it).filter { ch -> ch.isDigit() }
+                                intervalKmStr = cleaned
+                                val interval = cleaned.toIntOrNull() ?: 0
+                                val lastKm = lastKmStr.toIntOrNull() ?: selectedTool.currentOdometerKm
+                                if (interval > 0) {
+                                    nextKmStr = (lastKm + interval).toString()
+                                }
+                                syncMileageToNextDate(newIntervalKmStr = cleaned, newDailyKmStr = dailyKmStr)
+                            },
+                            label = { Text("دوره کارکرد کیلومتری سرویس (کیلومتر)") },
+                            placeholder = { Text("مثال: 5000") },
+                            leadingIcon = { Icon(Icons.Default.DirectionsCar, contentDescription = null) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Daily Mileage Input (پیمایش روزانه خودرو)
+                        OutlinedTextField(
+                            value = dailyKmStr,
+                            onValueChange = {
+                                val cleaned = JalaliCalendar.toEnglishDigits(it).filter { ch -> ch.isDigit() }
+                                dailyKmStr = cleaned
+                                syncMileageToNextDate(newIntervalKmStr = intervalKmStr, newDailyKmStr = cleaned)
+                            },
+                            label = { Text("پیمایش روزانه خودرو برای این سرویس (کیلومتر در روز)") },
+                            placeholder = { Text("مثال: 50 کیلومتر در روز") },
+                            leadingIcon = { Icon(Icons.Default.Schedule, contentDescription = null) },
+                            supportingText = {
+                                val intervalKmVal = intervalKmStr.toIntOrNull() ?: 0
+                                val dailyKmVal = dailyKmStr.toIntOrNull() ?: 0
+                                if (intervalKmVal > 0 && dailyKmVal > 0) {
+                                    val totalDays = ((intervalKmVal + dailyKmVal - 1) / dailyKmVal).coerceAtLeast(1)
                                     Text(
-                                        text = prio.titlePersian,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        text = "روزانه ${JalaliCalendar.toPersianDigits(dailyKmVal)} ک‌م از دوره ${JalaliCalendar.toPersianDigits(intervalKmVal)} ک‌م کسر شده و پس از ${JalaliCalendar.toPersianDigits(totalDays)} روز (موعد: ${JalaliCalendar.toPersianDigits(nextServiceDateJalali)}) به حد نصاب کارکرد می‌رسد.",
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.SemiBold
                                     )
+                                }
+                            },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = lastKmStr,
+                                onValueChange = {
+                                    val cleaned = JalaliCalendar.toEnglishDigits(it).filter { ch -> ch.isDigit() }
+                                    lastKmStr = cleaned
+                                    val last = cleaned.toIntOrNull() ?: 0
+                                    val interval = intervalKmStr.toIntOrNull() ?: 0
+                                    if (interval > 0 && last > 0) {
+                                        nextKmStr = (last + interval).toString()
+                                    }
                                 },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = prioColor,
-                                    selectedLabelColor = Color.White
-                                ),
+                                label = { Text("کیلومتر آخرین سرویس") },
+                                placeholder = { Text("مثال: 74000") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true,
                                 modifier = Modifier.weight(1f)
                             )
+
+                            OutlinedTextField(
+                                value = nextKmStr,
+                                onValueChange = {
+                                    nextKmStr = JalaliCalendar.toEnglishDigits(it).filter { ch -> ch.isDigit() }
+                                },
+                                label = { Text("کیلومتر موعد بعدی") },
+                                placeholder = { Text("مثال: 79000") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    // Priority Dropdown Menu (منوی پایین‌افتادنی میزان اهمیت و فوریت سرویس)
+                    ExposedDropdownMenuBox(
+                        expanded = priorityDropdownExpanded,
+                        onExpandedChange = { priorityDropdownExpanded = !priorityDropdownExpanded }
+                    ) {
+                        val selectedPrioColor = Color(selectedPriority.colorHex)
+                        OutlinedTextField(
+                            value = selectedPriority.titlePersian,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("میزان اهمیت و فوریت سرویس") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.PriorityHigh,
+                                    contentDescription = null,
+                                    tint = selectedPrioColor
+                                )
+                            },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = priorityDropdownExpanded)
+                            },
+                            singleLine = true,
+                            modifier = Modifier
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
+                                .fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = priorityDropdownExpanded,
+                            onDismissRequest = { priorityDropdownExpanded = false }
+                        ) {
+                            ServicePriority.entries.forEach { prio ->
+                                val prioColor = Color(prio.colorHex)
+                                val isSelected = prio == selectedPriority
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = prio.titlePersian,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) prioColor else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.PriorityHigh,
+                                            contentDescription = null,
+                                            tint = prioColor,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    },
+                                    trailingIcon = if (isSelected) {
+                                        {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = prioColor,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    } else null,
+                                    onClick = {
+                                        selectedPriority = prio
+                                        priorityDropdownExpanded = false
+                                    }
+                                )
+                            }
                         }
                     }
 
@@ -525,8 +724,10 @@ fun AddEditServiceDialog(
                                 label = {
                                     Text(
                                         text = label,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             )
@@ -555,6 +756,10 @@ fun AddEditServiceDialog(
                         }
                         val cost = estimatedCostStr.toLongOrNull() ?: 0L
                         val days = customDaysStr.toIntOrNull() ?: 30
+                        val intervalKm = if (isVehicle) (intervalKmStr.toIntOrNull() ?: 0) else 0
+                        val dailyKm = if (isVehicle) (dailyKmStr.toIntOrNull() ?: 0) else 0
+                        val lastKm = if (isVehicle) (lastKmStr.toIntOrNull() ?: 0) else 0
+                        val nextKm = if (isVehicle) (nextKmStr.toIntOrNull() ?: 0) else 0
 
                         val newSchedule = (scheduleToEdit ?: ServiceScheduleEntity(
                             toolId = selectedTool.id,
@@ -567,6 +772,10 @@ fun AddEditServiceDialog(
                             serviceTypeName = selectedServiceType.name,
                             intervalTypeName = selectedIntervalType.name,
                             customIntervalDays = days,
+                            intervalKilometers = intervalKm,
+                            dailyKilometers = dailyKm,
+                            lastServiceOdometerKm = lastKm,
+                            nextServiceOdometerKm = nextKm,
                             lastServiceDateJalali = lastServiceDateJalali,
                             nextServiceDateJalali = nextServiceDateJalali,
                             expiryDateJalali = expiryDateJalali,
@@ -580,6 +789,7 @@ fun AddEditServiceDialog(
                         onSaveSchedule(newSchedule)
                         onDismissRequest()
                     },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     )
@@ -587,21 +797,24 @@ fun AddEditServiceDialog(
                     Icon(
                         imageVector = Icons.Default.Check,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("ذخیره برنامه سرویس", fontWeight = FontWeight.Bold)
+                    com.example.ui.components.AutoResizedButtonText("ذخیره برنامه سرویس", maxFontSize = 12.5.sp)
                 }
             },
             dismissButton = {
-                OutlinedButton(onClick = onDismissRequest) {
+                OutlinedButton(
+                    onClick = onDismissRequest,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("انصراف")
+                    com.example.ui.components.AutoResizedButtonText("انصراف", maxFontSize = 12.5.sp)
                 }
             }
         )

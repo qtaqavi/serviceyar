@@ -34,7 +34,8 @@ object SampleData {
                 categoryName = ToolCategory.VEHICLE.name,
                 modelOrBrand = "ایران خودرو - مدل ۱۴۰۱",
                 location = "پارکینگ شماره ۳",
-                serialNumber = "IR-68-912-ج-33",
+                serialNumber = "21-ج-564-68",
+                currentOdometerKm = 78500,
                 purchaseDateJalali = "${currentYear - 2}/۰۳/۱۰",
                 purchasePrice = 650000000L,
                 notes = "روغن ۱۰W-40 نیمه‌سنتتیک استفاده شود. لنت‌های ترمز در هر سرویس چک شوند."
@@ -142,9 +143,14 @@ object SampleData {
                 toolName = "خودرو سواری پژو پارس TU5",
                 title = "تعویض روغن موتور، فیلتر روغن و فیلتر هوا",
                 serviceTypeName = ServiceType.LUBRICATION_OIL.name,
-                intervalTypeName = IntervalType.QUARTERLY.name,
-                lastServiceDateJalali = last3Months,
-                nextServiceDateJalali = in5Days, // Due soon!
+                intervalTypeName = IntervalType.CUSTOM_DAYS.name,
+                customIntervalDays = 100,
+                intervalKilometers = 5000,
+                dailyKilometers = 50,
+                lastServiceOdometerKm = 74000,
+                nextServiceOdometerKm = 79000,
+                lastServiceDateJalali = JalaliCalendar.addDays(now, -95).toStandardString(),
+                nextServiceDateJalali = in5Days, // 95 days * 50 km = 4750 km traveled, 250 km (5 days) remaining!
                 expiryDateJalali = "",
                 priorityName = ServicePriority.HIGH.name,
                 estimatedCost = 1800000L,

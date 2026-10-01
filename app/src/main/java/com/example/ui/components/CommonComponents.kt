@@ -27,18 +27,28 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.CategoryUiModel
 import com.example.data.model.ServicePriority
 import com.example.data.model.ServiceStatus
 import com.example.data.model.ToolCategory
+import com.example.ui.theme.LocalAppFontFamily
+import com.example.ui.theme.LocalAppFontScale
 import com.example.ui.theme.StatusDueSoonAmber
 import com.example.ui.theme.StatusDueSoonAmberContainer
 import com.example.ui.theme.StatusDueSoonAmberText
@@ -50,27 +60,83 @@ import com.example.ui.theme.StatusUpToDateGreenContainer
 import com.example.ui.theme.StatusUpToDateGreenText
 import com.example.util.JalaliCalendar
 
+/**
+ * Automatically adjusts its font size down from [maxFontSize] to [minFontSize]
+ * so that button labels always fit their button container completely and legibly on a single line.
+ */
+@Composable
+fun AutoResizedButtonText(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fontWeight: FontWeight = FontWeight.Bold,
+    maxFontSize: TextUnit = 12.5.sp,
+    minFontSize: TextUnit = 8.sp,
+    textAlign: TextAlign = TextAlign.Center
+) {
+    val activeFontFamily = LocalAppFontFamily.current
+    val appFontScale = LocalAppFontScale.current
+    val initialSize = remember(maxFontSize, appFontScale) {
+        val factor = (1f + (appFontScale - 1f) * 0.25f).coerceIn(0.90f, 1.05f)
+        (maxFontSize.value * factor).coerceIn(minFontSize.value, 13f).sp
+    }
+    var scaledFontSize by remember(text, initialSize, minFontSize, activeFontFamily) { mutableStateOf(initialSize) }
+    var readyToDraw by remember(text, initialSize, minFontSize, activeFontFamily) { mutableStateOf(false) }
+
+    Text(
+        text = text,
+        color = color,
+        fontFamily = activeFontFamily,
+        fontSize = scaledFontSize,
+        fontWeight = fontWeight,
+        textAlign = textAlign,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Ellipsis,
+        lineHeight = (scaledFontSize.value * 1.2f).sp,
+        onTextLayout = { result ->
+            if ((result.didOverflowWidth || result.hasVisualOverflow) && scaledFontSize > minFontSize) {
+                val nextSize = (scaledFontSize.value - 0.5f).sp
+                if (nextSize >= minFontSize) {
+                    scaledFontSize = nextSize
+                } else {
+                    scaledFontSize = minFontSize
+                    readyToDraw = true
+                }
+            } else {
+                readyToDraw = true
+            }
+        },
+        modifier = modifier.drawWithContent {
+            if (readyToDraw) {
+                drawContent()
+            }
+        }
+    )
+}
+
 @Composable
 fun StatusBadge(
     status: ServiceStatus,
     daysDiff: Int? = null,
     modifier: Modifier = Modifier
 ) {
+    val activeFontFamily = LocalAppFontFamily.current
     val (backgroundColor, textColor, icon, label) = when (status) {
         ServiceStatus.OVERDUE -> {
             val countText = if (daysDiff != null && daysDiff < 0) {
-                " (${JalaliCalendar.toPersianDigits(-daysDiff)} روز تاخیر)"
+                " (${JalaliCalendar.toPersianDigits(-daysDiff)} روز)"
             } else ""
             Tuple4(
                 StatusOverdueRedContainer,
                 StatusOverdueRed,
                 Icons.Default.Error,
-                "منقضی شده$countText"
+                "منقضی$countText"
             )
         }
         ServiceStatus.DUE_SOON -> {
             val countText = if (daysDiff != null && daysDiff >= 0) {
-                " (${JalaliCalendar.toPersianDigits(daysDiff)} روز مانده)"
+                " (${JalaliCalendar.toPersianDigits(daysDiff)} روز)"
             } else ""
             Tuple4(
                 Color(0xFFCCE8E8),
@@ -84,7 +150,7 @@ fun StatusBadge(
                 StatusUpToDateGreenContainer,
                 StatusUpToDateGreen,
                 Icons.Default.CheckCircle,
-                "سرویس‌شده و سالم"
+                "سرویس‌شده"
             )
         }
         ServiceStatus.EXPIRED_WARRANTY -> {
@@ -92,7 +158,7 @@ fun StatusBadge(
                 Color(0xFFE8DDFF),
                 Color(0xFF6750A4),
                 Icons.Default.Info,
-                "اتمام مهلت گارانتی"
+                "اتمام گارانتی"
             )
         }
         ServiceStatus.NO_SCHEDULE -> {
@@ -100,7 +166,7 @@ fun StatusBadge(
                 Color(0xFFE2E2EC),
                 Color(0xFF44474E),
                 Icons.Default.Schedule,
-                "بدون برنامه سرویس"
+                "بدون سرویس"
             )
         }
     }
@@ -112,7 +178,7 @@ fun StatusBadge(
         modifier = modifier
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
@@ -120,13 +186,17 @@ fun StatusBadge(
                 imageVector = icon,
                 contentDescription = null,
                 tint = textColor,
-                modifier = Modifier.size(13.dp)
+                modifier = Modifier.size(12.dp)
             )
             Text(
                 text = label,
-                fontSize = 11.sp,
+                fontFamily = activeFontFamily,
+                fontSize = 10.5.sp,
                 fontWeight = FontWeight.Bold,
-                color = textColor
+                color = textColor,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -137,7 +207,16 @@ fun CategoryChip(
     category: ToolCategory,
     modifier: Modifier = Modifier
 ) {
-    val categoryColor = Color(category.colorHex)
+    CategoryChip(categoryUi = category.toUiModel(), modifier = modifier)
+}
+
+@Composable
+fun CategoryChip(
+    categoryUi: CategoryUiModel,
+    modifier: Modifier = Modifier
+) {
+    val activeFontFamily = LocalAppFontFamily.current
+    val categoryColor = Color(categoryUi.colorHex)
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = categoryColor.copy(alpha = 0.12f),
@@ -145,21 +224,25 @@ fun CategoryChip(
         modifier = modifier
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Icon(
-                imageVector = category.icon,
+                imageVector = categoryUi.icon,
                 contentDescription = null,
                 tint = categoryColor,
-                modifier = Modifier.size(14.dp)
+                modifier = Modifier.size(13.dp)
             )
             Text(
-                text = category.titlePersian,
-                fontSize = 11.sp,
+                text = categoryUi.titlePersian,
+                fontFamily = activeFontFamily,
+                fontSize = 10.5.sp,
                 fontWeight = FontWeight.Bold,
-                color = categoryColor
+                color = categoryColor,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -170,6 +253,7 @@ fun PriorityBadge(
     priority: ServicePriority,
     modifier: Modifier = Modifier
 ) {
+    val activeFontFamily = LocalAppFontFamily.current
     val color = Color(priority.colorHex)
     Surface(
         shape = RoundedCornerShape(8.dp),
@@ -179,9 +263,13 @@ fun PriorityBadge(
     ) {
         Text(
             text = priority.titlePersian,
+            fontFamily = activeFontFamily,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             color = color,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
         )
     }
@@ -264,11 +352,14 @@ fun SectionHeader(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -276,7 +367,10 @@ fun SectionHeader(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
             )
             if (count != null) {
                 Surface(
@@ -288,6 +382,8 @@ fun SectionHeader(
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        maxLines = 1,
+                        softWrap = false,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                     )
                 }
@@ -296,17 +392,17 @@ fun SectionHeader(
 
         if (actionText != null && onActionClick != null) {
             Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
                 onClick = onActionClick
             ) {
-                Text(
+                AutoResizedButtonText(
                     text = actionText,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                    maxFontSize = 11.5.sp,
+                    minFontSize = 8.5.sp,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                 )
             }
         }

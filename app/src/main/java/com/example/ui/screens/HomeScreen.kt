@@ -1,48 +1,46 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Alarm
-import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.Assessment
+import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.FolderSpecial
 import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,30 +57,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.CustomCategoryRegistry
+import com.example.data.model.CustomToolCategory
 import com.example.data.model.ServiceScheduleEntity
 import com.example.data.model.ServiceStatus
-import com.example.data.model.ToolCategory
 import com.example.data.model.ToolEntity
 import com.example.data.model.ToolWithServices
-import com.example.ui.components.CategoryChip
+import com.example.ui.components.AutoResizedButtonText
 import com.example.ui.components.EmptyStateView
 import com.example.ui.components.SectionHeader
-import com.example.ui.components.StatCard
 import com.example.ui.components.StatusBadge
-import com.example.ui.theme.SleekPrimary
-import com.example.ui.theme.SleekPrimaryContainerLight
-import com.example.ui.theme.SleekOnPrimaryContainerLight
 import com.example.ui.theme.StatusDueSoonAmber
 import com.example.ui.theme.StatusDueSoonAmberContainer
 import com.example.ui.theme.StatusOverdueRed
@@ -90,12 +81,20 @@ import com.example.ui.theme.StatusOverdueRedContainer
 import com.example.ui.theme.StatusUpToDateGreen
 import com.example.ui.theme.StatusUpToDateGreenContainer
 import com.example.util.JalaliCalendar
-import com.example.util.JalaliDate
 
+private data class HomeAlertItem(
+    val tool: ToolEntity,
+    val schedule: ServiceScheduleEntity,
+    val status: ServiceStatus,
+    val daysUntilNext: Int
+)
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HomeScreen(
     toolsWithServices: List<ToolWithServices>,
     allSchedules: List<ServiceScheduleEntity>,
+    customCategories: List<CustomToolCategory> = CustomCategoryRegistry.customCategories,
     onToolClick: (ToolEntity) -> Unit,
     onAddNewTool: () -> Unit,
     onAddNewService: (ToolEntity) -> Unit,
@@ -103,281 +102,340 @@ fun HomeScreen(
     onEditService: (ToolEntity, ServiceScheduleEntity) -> Unit,
     onTriggerTestNotification: () -> Unit,
     onLoadSampleData: () -> Unit,
+    onOpenCategoryManagement: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
+    onOpenReports: () -> Unit = {},
+    onOpenBackupRestore: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var selectedStatusFilter by remember { mutableStateOf<ServiceStatus?>(null) }
-    var selectedCategoryFilter by remember { mutableStateOf<ToolCategory?>(null) }
+    var selectedCategoryKeyFilter by remember { mutableStateOf<String?>(null) }
 
-    val now = JalaliCalendar.now()
-
-    // Aggregate statistics
-    val totalToolsCount = toolsWithServices.size
-    val overdueCount = allSchedules.count { it.computeStatus(now) == ServiceStatus.OVERDUE }
-    val dueSoonCount = allSchedules.count { it.computeStatus(now) == ServiceStatus.DUE_SOON }
-    val upToDateCount = allSchedules.count { it.computeStatus(now) == ServiceStatus.UP_TO_DATE }
-    val totalEstimatedCost = allSchedules.sumOf { it.estimatedCost }
-
-    // Find the most urgent or upcoming service for the Hero Banner
-    val heroUpcomingSchedule = remember(allSchedules, toolsWithServices) {
-        allSchedules
-            .sortedWith(
-                compareBy<ServiceScheduleEntity> {
-                    when (it.computeStatus(now)) {
-                        ServiceStatus.OVERDUE -> 0
-                        ServiceStatus.DUE_SOON -> 1
-                        ServiceStatus.UP_TO_DATE -> 2
-                        ServiceStatus.EXPIRED_WARRANTY -> 3
-                        ServiceStatus.NO_SCHEDULE -> 4
-                    }
-                }.thenBy {
-                    it.getDaysUntilNext(now) ?: 9999
-                }
-            ).firstOrNull()
+    val allCategoryModels = remember(customCategories) {
+        CustomCategoryRegistry.getAllCategoryModels(customCategories)
     }
 
+    val now = JalaliCalendar.now()
+    val totalToolsCount = toolsWithServices.size
+
+    // Build active alerts list (Overdue, Due Soon, Expired Warranty)
+    val activeAlerts = remember(toolsWithServices, now) {
+        val list = mutableListOf<HomeAlertItem>()
+        toolsWithServices.forEach { tws ->
+            val isVeh = tws.tool.isVehicle()
+            val odo = if (isVeh) tws.tool.currentOdometerKm else 0
+            tws.schedules.forEach { sched ->
+                val st = sched.computeStatus(now, odo, isVeh)
+                if (st == ServiceStatus.OVERDUE || st == ServiceStatus.DUE_SOON || st == ServiceStatus.EXPIRED_WARRANTY) {
+                    list.add(
+                        HomeAlertItem(
+                            tool = tws.tool,
+                            schedule = sched,
+                            status = st,
+                            daysUntilNext = sched.getDaysUntilNext(now, isVeh)
+                        )
+                    )
+                }
+            }
+        }
+        list.sortedWith(
+            compareBy<HomeAlertItem> {
+                when (it.status) {
+                    ServiceStatus.OVERDUE -> 0
+                    ServiceStatus.EXPIRED_WARRANTY -> 1
+                    ServiceStatus.DUE_SOON -> 2
+                    else -> 3
+                }
+            }.thenBy { it.daysUntilNext }
+        )
+    }
+
+    val overdueCount = activeAlerts.count { it.status == ServiceStatus.OVERDUE || it.status == ServiceStatus.EXPIRED_WARRANTY }
+    val dueSoonCount = activeAlerts.count { it.status == ServiceStatus.DUE_SOON }
+
     // Filter tools based on search and selected chips
-    val filteredTools = remember(toolsWithServices, searchQuery, selectedStatusFilter, selectedCategoryFilter) {
+    val filteredTools = remember(toolsWithServices, searchQuery, selectedStatusFilter, selectedCategoryKeyFilter, customCategories) {
         val q = JalaliCalendar.toEnglishDigits(searchQuery.trim().lowercase())
             .replace('ي', 'ی')
             .replace('ك', 'ک')
 
         toolsWithServices.filter { toolWithServices ->
             val tool = toolWithServices.tool
-            val category = tool.getCategory()
+            val catUi = CustomCategoryRegistry.resolve(tool.categoryName, customCategories)
 
-            // Category filter
-            if (selectedCategoryFilter != null && category != selectedCategoryFilter) {
+            if (selectedCategoryKeyFilter != null && !catUi.key.equals(selectedCategoryKeyFilter, ignoreCase = true)) {
                 return@filter false
             }
 
-            // Status filter
             if (selectedStatusFilter != null && toolWithServices.getOverallStatus(now) != selectedStatusFilter) {
                 return@filter false
             }
 
-            // Search query filter
             if (q.isNotEmpty()) {
                 val toolNameNorm = tool.name.lowercase().replace('ي', 'ی').replace('ك', 'ک')
-                val modelNorm = tool.modelOrBrand.lowercase().replace('ي', 'ی').replace('ك', 'ک')
-                val locNorm = tool.location.lowercase().replace('ي', 'ی').replace('ك', 'ک')
+                val catNorm = catUi.titlePersian.lowercase().replace('ي', 'ی').replace('ك', 'ک')
                 val servicesMatch = toolWithServices.schedules.any {
                     it.title.lowercase().replace('ي', 'ی').replace('ك', 'ک').contains(q)
                 }
-
-                toolNameNorm.contains(q) || modelNorm.contains(q) || locNorm.contains(q) || servicesMatch
+                toolNameNorm.contains(q) || catNorm.contains(q) || servicesMatch
             } else {
                 true
             }
         }
     }
 
-    LazyColumn(
+    // Categories that actually have tools (or are custom / currently selected) to eliminate empty category clutter
+    val visibleCategories = remember(allCategoryModels, toolsWithServices, customCategories, selectedCategoryKeyFilter) {
+        val populated = allCategoryModels.filter { cat ->
+            val count = toolsWithServices.count {
+                CustomCategoryRegistry.resolve(it.tool.categoryName, customCategories).key.equals(cat.key, ignoreCase = true)
+            }
+            count > 0 || cat.isCustom || cat.key.equals(selectedCategoryKeyFilter, ignoreCase = true)
+        }
+        populated.ifEmpty { allCategoryModels }
+    }
+
+    Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentPadding = PaddingValues(bottom = 96.dp)
+            .background(MaterialTheme.colorScheme.background)
     ) {
-        // Sleek Header (مدیریت سرویس + Date + User Avatar Action)
-        item {
-            Surface(
-                color = MaterialTheme.colorScheme.background,
-                modifier = Modifier.fillMaxWidth()
+        // FIXED STICKY TOP HEADER: "مدیریت سرویس" + Action Icons (Never scrolls when scrolling down or up)
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 3.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
                         Text(
                             text = "مدیریت سرویس",
-                            style = MaterialTheme.typography.headlineMedium,
+                            style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            letterSpacing = (-0.5).sp
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = "امروز: ${now.format(includeDayName = true)}",
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
 
-                    // Sleek Avatar / Quick Action Pill
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clickable { onTriggerTestNotification() }
+                    // Fixed Top Bar Icons: Reports, Cloud/Backup, Settings, Alert Bell
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
+                        IconButton(
+                            onClick = onOpenReports,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f))
+                                .testTag("open_reports_top_button")
+                        ) {
                             Icon(
-                                imageVector = Icons.Default.Person,
-                                contentDescription = "پروفایل و یادآوری‌ها",
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(24.dp)
+                                imageVector = Icons.Default.Assessment,
+                                contentDescription = "گزارش‌گیری",
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.size(18.dp)
                             )
+                        }
+
+                        IconButton(
+                            onClick = onOpenBackupRestore,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f))
+                                .testTag("open_cloud_top_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudUpload,
+                                contentDescription = "ذخیره در فضای ابری و پشتیبان‌گیری",
+                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = onOpenSettings,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
+                                .testTag("open_settings_top_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "تنظیمات برنامه",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = CircleShape,
+                            color = if (overdueCount > 0) StatusOverdueRedContainer else MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .clickable { onTriggerTestNotification() }
+                                .testTag("alert_bell_top_button")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.NotificationsActive,
+                                    contentDescription = "زنگوله هشدار",
+                                    tint = if (overdueCount > 0) StatusOverdueRed else MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                 }
-            }
-        }
 
-        // Hero Card (Sleek Royal Blue #005AC1 with rounded 28dp corners & glowing accents)
-        if (heroUpcomingSchedule != null) {
-            item {
-                val heroTool = toolsWithServices.firstOrNull { it.tool.id == heroUpcomingSchedule.toolId }?.tool
-                val heroDaysDiff = heroUpcomingSchedule.getDaysUntilNext(now)
-                val heroStatus = heroUpcomingSchedule.computeStatus(now)
-
-                Card(
-                    shape = RoundedCornerShape(28.dp),
-                    colors = CardDefaults.cardColors(containerColor = SleekPrimary),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 6.dp)
-                        .clickable {
-                            if (heroTool != null) onToolClick(heroTool)
-                        }
+                // Quick Action Bar for Cloud Save, Reports & Backup
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Box(
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                        border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .drawBehind {
-                                // Draw glowing decorative radial circles in the background
-                                drawCircle(
-                                    brush = Brush.radialGradient(
-                                        colors = listOf(Color.White.copy(alpha = 0.15f), Color.Transparent),
-                                        center = Offset(size.width * 0.15f, size.height * 0.9f),
-                                        radius = size.width * 0.45f
-                                    )
-                                )
-                                drawCircle(
-                                    brush = Brush.radialGradient(
-                                        colors = listOf(Color.White.copy(alpha = 0.12f), Color.Transparent),
-                                        center = Offset(size.width * 0.9f, size.height * 0.1f),
-                                        radius = size.width * 0.35f
-                                    )
-                                )
-                            }
-                            .padding(22.dp)
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onOpenReports() }
+                            .testTag("home_reports_button")
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (heroStatus == ServiceStatus.OVERDUE) "⚠️ سرویس فوری و معوقه" else "سرویس نزدیک",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = Color.White.copy(alpha = 0.85f),
-                                    fontWeight = FontWeight.Medium
-                                )
-
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color.White.copy(alpha = 0.2f)
-                                ) {
-                                    Text(
-                                        text = heroUpcomingSchedule.getIntervalType().titlePersian,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-
-                            Text(
-                                text = "${heroTool?.name ?: heroUpcomingSchedule.toolName} (${heroUpcomingSchedule.title})",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Assessment,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
                             )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            AutoResizedButtonText(
+                                text = "گزارش‌گیری",
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                maxFontSize = 11.sp,
+                                minFontSize = 8.sp,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                        }
+                    }
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = if (heroStatus == ServiceStatus.OVERDUE) Color(0xFFFFDAD6) else Color.White.copy(alpha = 0.22f)
-                                ) {
-                                    val daysText = when {
-                                        heroDaysDiff >= 9999 -> "موعد سرویس"
-                                        heroDaysDiff < 0 -> "${JalaliCalendar.toPersianDigits(-heroDaysDiff)} روز تاخیر"
-                                        heroDaysDiff == 0 -> "امروز"
-                                        else -> "${JalaliCalendar.toPersianDigits(heroDaysDiff)} روز مانده"
-                                    }
-                                    Text(
-                                        text = daysText,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (heroStatus == ServiceStatus.OVERDUE) Color(0xFFBA1A1A) else Color.White,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
-                                    )
-                                }
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                        border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.25f)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onOpenBackupRestore() }
+                            .testTag("home_backup_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Backup,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            AutoResizedButtonText(
+                                text = "پشتیبان‌گیری",
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                maxFontSize = 11.sp,
+                                minFontSize = 8.sp,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                        }
+                    }
 
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color.White.copy(alpha = 0.2f)
-                                ) {
-                                    Text(
-                                        text = heroUpcomingSchedule.getServiceType().titlePersian,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color.White,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.weight(1f))
-
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = Color.White,
-                                    modifier = Modifier.clickable {
-                                        onMarkServiceDone(heroUpcomingSchedule)
-                                    }
-                                ) {
-                                    Text(
-                                        text = "ثبت انجام",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = SleekPrimary,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                    )
-                                }
-                            }
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f),
+                        border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.25f)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onOpenBackupRestore() }
+                            .testTag("home_cloud_save_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudUpload,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.tertiary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            AutoResizedButtonText(
+                                text = "فضای ابری",
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                maxFontSize = 11.sp,
+                                minFontSize = 8.sp,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
                         }
                     }
                 }
             }
         }
 
-        // Sleek Search Bar
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp)
-            ) {
+        // Scrollable Body: Search, Alerts Section, Compact Device Categories, and Clean Full-Title Tool List
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentPadding = PaddingValues(top = 10.dp, bottom = 96.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Search Bar
+            item {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     placeholder = {
                         Text(
-                            text = "جستجو در نام ابزار، مدل، برند یا نوع سرویس...",
+                            text = "جستجوی نام ابزار یا تجهیز...",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
@@ -387,7 +445,7 @@ fun HomeScreen(
                             imageVector = Icons.Default.Search,
                             contentDescription = "جستجو",
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     },
                     trailingIcon = {
@@ -398,435 +456,325 @@ fun HomeScreen(
                         }
                     },
                     singleLine = true,
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
                         focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                     ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-
-        // Overdue Alert Banner (if any)
-        if (overdueCount > 0) {
-            item {
-                Card(
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = StatusOverdueRedContainer),
-                    border = BorderStroke(1.dp, StatusOverdueRed.copy(alpha = 0.3f)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 6.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(StatusOverdueRed),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Warning,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "هشدار: ${JalaliCalendar.toPersianDigits(overdueCount)} مورد نیازمند سرویس فوری!",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = StatusOverdueRed
-                            )
-                            Text(
-                                text = "موعد سرویس دوره‌ای سپری شده است. جهت جلوگیری از استهلاک اقدام نمایید.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        Button(
-                            onClick = {
-                                selectedStatusFilter = ServiceStatus.OVERDUE
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = StatusOverdueRed),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Text("مشاهده", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
-
-        // Summary Statistics Cards
-        item {
-            Column(modifier = Modifier.padding(vertical = 6.dp)) {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    item {
-                        StatCard(
-                            title = "کل ابزار و وسایل",
-                            value = JalaliCalendar.toPersianDigits(totalToolsCount),
-                            subtitle = "تجهیزات ثبت‌شده",
-                            icon = Icons.Default.Build,
-                            iconColor = SleekPrimary,
-                            modifier = Modifier.width(145.dp)
-                        )
-                    }
-                    item {
-                        StatCard(
-                            title = "نیازمند اقدام فوری",
-                            value = JalaliCalendar.toPersianDigits(overdueCount),
-                            subtitle = "موعد گذشته",
-                            icon = Icons.Default.Error,
-                            iconColor = StatusOverdueRed,
-                            containerColor = if (overdueCount > 0) StatusOverdueRedContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surface,
-                            modifier = Modifier.width(145.dp)
-                        )
-                    }
-                    item {
-                        StatCard(
-                            title = "نزدیک به موعد",
-                            value = JalaliCalendar.toPersianDigits(dueSoonCount),
-                            subtitle = "طی ۳۰ روز آینده",
-                            icon = Icons.Default.Alarm,
-                            iconColor = StatusDueSoonAmber,
-                            modifier = Modifier.width(145.dp)
-                        )
-                    }
-                    item {
-                        StatCard(
-                            title = "سرویس‌شده و سالم",
-                            value = JalaliCalendar.toPersianDigits(upToDateCount),
-                            subtitle = "وضعیت مطلوب",
-                            icon = Icons.Default.CheckCircle,
-                            iconColor = StatusUpToDateGreen,
-                            modifier = Modifier.width(145.dp)
-                        )
-                    }
-                    item {
-                        StatCard(
-                            title = "برآورد هزینه‌ها",
-                            value = JalaliCalendar.formatPrice(totalEstimatedCost),
-                            subtitle = "هزینه تخمینی دوره",
-                            icon = Icons.Default.AttachMoney,
-                            iconColor = Color(0xFF6750A4),
-                            modifier = Modifier.width(175.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        // Filter Chips Row
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(horizontal = 2.dp)
-                ) {
-                    item {
-                        FilterChip(
-                            selected = selectedStatusFilter == null && selectedCategoryFilter == null,
-                            onClick = {
-                                selectedStatusFilter = null
-                                selectedCategoryFilter = null
-                            },
-                            shape = CircleShape,
-                            label = { Text("همه (${JalaliCalendar.toPersianDigits(totalToolsCount)})", fontWeight = FontWeight.Bold) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                selectedLabelColor = Color.White
-                            )
-                        )
-                    }
-                    item {
-                        FilterChip(
-                            selected = selectedStatusFilter == ServiceStatus.OVERDUE,
-                            onClick = {
-                                selectedStatusFilter = if (selectedStatusFilter == ServiceStatus.OVERDUE) null else ServiceStatus.OVERDUE
-                            },
-                            shape = CircleShape,
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Error,
-                                    contentDescription = null,
-                                    tint = if (selectedStatusFilter == ServiceStatus.OVERDUE) Color.White else StatusOverdueRed,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            },
-                            label = { Text("فوری (${JalaliCalendar.toPersianDigits(overdueCount)})", fontWeight = FontWeight.Bold) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = StatusOverdueRed,
-                                selectedLabelColor = Color.White
-                            )
-                        )
-                    }
-                    item {
-                        FilterChip(
-                            selected = selectedStatusFilter == ServiceStatus.DUE_SOON,
-                            onClick = {
-                                selectedStatusFilter = if (selectedStatusFilter == ServiceStatus.DUE_SOON) null else ServiceStatus.DUE_SOON
-                            },
-                            shape = CircleShape,
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Warning,
-                                    contentDescription = null,
-                                    tint = if (selectedStatusFilter == ServiceStatus.DUE_SOON) Color.White else StatusDueSoonAmber,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            },
-                            label = { Text("نزدیک موعد (${JalaliCalendar.toPersianDigits(dueSoonCount)})", fontWeight = FontWeight.Bold) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = StatusDueSoonAmber,
-                                selectedLabelColor = Color.White
-                            )
-                        )
-                    }
-                    items(ToolCategory.entries) { category ->
-                        val isSelected = category == selectedCategoryFilter
-                        val categoryColor = Color(category.colorHex)
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = {
-                                selectedCategoryFilter = if (isSelected) null else category
-                            },
-                            shape = CircleShape,
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = category.icon,
-                                    contentDescription = null,
-                                    tint = if (isSelected) Color.White else categoryColor,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                            },
-                            label = { Text(category.titlePersian) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = categoryColor,
-                                selectedLabelColor = Color.White
-                            )
-                        )
-                    }
-                }
-            }
-        }
-
-        // Section Title: «لیست ابزارها»
-        item {
-            SectionHeader(
-                title = "لیست ابزارها",
-                count = filteredTools.size,
-                actionText = "افزودن وسیله +",
-                onActionClick = onAddNewTool
-            )
-        }
-
-        // Empty state
-        if (filteredTools.isEmpty()) {
-            item {
-                EmptyStateView(
-                    title = if (toolsWithServices.isEmpty()) "هنوز هیچ وسیله‌ای اضافه نشده است" else "هیچ وسیله‌ای با این فیلتر یافت نشد",
-                    description = if (toolsWithServices.isEmpty()) "شما می‌توانید اولین وسیله، خودرو، پکیج یا ابزار کارگاهی خود را ثبت کنید یا داده‌های نمونه فارسی را بارگذاری نمایید." else "فیلترها یا عبارت جستجو را تغییر دهید.",
-                    icon = Icons.Default.Build
+                        .padding(horizontal = 16.dp)
                 )
-                if (toolsWithServices.isEmpty()) {
-                    Box(
+            }
+
+            // 1. ALERTS SECTION (هشدارها)
+            item {
+                AlertsSummarySection(
+                    activeAlerts = activeAlerts,
+                    onAlertClick = { alertItem -> onToolClick(alertItem.tool) },
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+
+            // 2. DEVICE CATEGORIES SECTION (دسته‌بندی دستگاه‌ها - بدون فضای خالی)
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 8.dp),
-                        contentAlignment = Alignment.Center
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Category,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                Text(
+                                    text = "دسته‌بندی دستگاه‌ها",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { onOpenCategoryManagement() }
+                                    .testTag("manage_categories_button")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.FolderSpecial,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    AutoResizedButtonText(
+                                        text = "مدیریت دسته‌ها",
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        maxFontSize = 11.5.sp,
+                                        minFontSize = 8.5.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        // Tight FlowRow with custom compact pills (eliminates empty spaces)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            val allSelected = selectedStatusFilter == null && selectedCategoryKeyFilter == null
+                            CompactCategoryFilterPill(
+                                label = "همه (${JalaliCalendar.toPersianDigits(totalToolsCount)})",
+                                isSelected = allSelected,
+                                activeColor = MaterialTheme.colorScheme.primary,
+                                onClick = {
+                                    selectedStatusFilter = null
+                                    selectedCategoryKeyFilter = null
+                                }
+                            )
+
+                            if (overdueCount > 0) {
+                                val isOverdueSelected = selectedStatusFilter == ServiceStatus.OVERDUE
+                                CompactCategoryFilterPill(
+                                    label = "هشدار فوری (${JalaliCalendar.toPersianDigits(overdueCount)})",
+                                    isSelected = isOverdueSelected,
+                                    activeColor = StatusOverdueRed,
+                                    icon = Icons.Default.Error,
+                                    onClick = {
+                                        selectedStatusFilter = if (isOverdueSelected) null else ServiceStatus.OVERDUE
+                                    }
+                                )
+                            }
+
+                            if (dueSoonCount > 0) {
+                                val isDueSoonSelected = selectedStatusFilter == ServiceStatus.DUE_SOON
+                                CompactCategoryFilterPill(
+                                    label = "نزدیک موعد (${JalaliCalendar.toPersianDigits(dueSoonCount)})",
+                                    isSelected = isDueSoonSelected,
+                                    activeColor = StatusDueSoonAmber,
+                                    icon = Icons.Default.Warning,
+                                    onClick = {
+                                        selectedStatusFilter = if (isDueSoonSelected) null else ServiceStatus.DUE_SOON
+                                    }
+                                )
+                            }
+
+                            visibleCategories.forEach { category ->
+                                val isSelected = category.key.equals(selectedCategoryKeyFilter, ignoreCase = true)
+                                val categoryColor = Color(category.colorHex)
+                                val countInCat = toolsWithServices.count {
+                                    CustomCategoryRegistry.resolve(it.tool.categoryName, customCategories)
+                                        .key.equals(category.key, ignoreCase = true)
+                                }
+                                CompactCategoryFilterPill(
+                                    label = if (countInCat > 0) {
+                                        "${category.titlePersian} (${JalaliCalendar.toPersianDigits(countInCat)})"
+                                    } else {
+                                        category.titlePersian
+                                    },
+                                    isSelected = isSelected,
+                                    activeColor = categoryColor,
+                                    icon = category.icon,
+                                    onClick = {
+                                        selectedCategoryKeyFilter = if (isSelected) null else category.key
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. TOOLS & EQUIPMENT LIST HEADER
+            item {
+                SectionHeader(
+                    title = "ابزارها و تجهیزات",
+                    count = filteredTools.size,
+                    actionText = "افزودن وسیله +",
+                    onActionClick = onAddNewTool
+                )
+            }
+
+            // 4. TOOLS & EQUIPMENT ITEMS (Clean Full-Title Cards + Alert Status Only)
+            if (filteredTools.isEmpty()) {
+                item {
+                    EmptyStateView(
+                        title = if (toolsWithServices.isEmpty()) "هنوز هیچ وسیله‌ای اضافه نشده است" else "هیچ وسیله‌ای با این فیلتر یافت نشد",
+                        description = if (toolsWithServices.isEmpty()) "اولین وسیله یا تجهیز خود را ثبت کنید یا وسایل نمونه را بارگذاری نمایید." else "فیلترها یا عبارت جستجو را تغییر دهید.",
+                        icon = Icons.Default.Build
+                    )
+                    if (toolsWithServices.isEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
                             Button(
                                 onClick = onAddNewTool,
-                                shape = RoundedCornerShape(12.dp)
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Default.Add, contentDescription = null)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("افزودن وسیله جدید", fontWeight = FontWeight.Bold)
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(17.dp))
+                                Spacer(modifier = Modifier.width(5.dp))
+                                AutoResizedButtonText(
+                                    text = "افزودن وسیله جدید",
+                                    maxFontSize = 12.sp,
+                                    minFontSize = 8.sp,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
                             }
                             OutlinedButton(
                                 onClick = onLoadSampleData,
-                                shape = RoundedCornerShape(12.dp)
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Text("بارگذاری وسایل نمونه")
+                                AutoResizedButtonText(
+                                    text = "بارگذاری وسایل نمونه",
+                                    maxFontSize = 12.sp,
+                                    minFontSize = 8.sp,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
                             }
                         }
                     }
                 }
-            }
-        } else {
-            // Sleek Tool Items List (Cards with 24dp rounded corners, Category Boxes, Badges & nested schedules)
-            items(filteredTools, key = { it.tool.id }) { toolWithServices ->
-                SleekToolServiceCard(
-                    toolWithServices = toolWithServices,
-                    onToolClick = { onToolClick(toolWithServices.tool) },
-                    onAddNewService = { onAddNewService(toolWithServices.tool) },
-                    onMarkServiceDone = onMarkServiceDone,
-                    onEditService = { schedule -> onEditService(toolWithServices.tool, schedule) },
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 7.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun SleekToolServiceCard(
-    toolWithServices: ToolWithServices,
-    onToolClick: () -> Unit,
-    onAddNewService: () -> Unit,
-    onMarkServiceDone: (ServiceScheduleEntity) -> Unit,
-    onEditService: (ServiceScheduleEntity) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val tool = toolWithServices.tool
-    val category = tool.getCategory()
-    val categoryColor = Color(category.colorHex)
-    val now = JalaliCalendar.now()
-    val overallStatus = toolWithServices.getOverallStatus(now)
-
-    val nearestSchedule = toolWithServices.getNearestUpcomingSchedule(now)
-    val daysDiff = nearestSchedule?.getDaysUntilNext(now)
-
-    Card(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onToolClick)
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Main Tool Header Row (Category box 48x48 + Details + Status Badge)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                // Sleek Category Box (w-12 h-12 rounded-2xl with category color)
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(categoryColor),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = category.icon,
-                        contentDescription = category.titlePersian,
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp)
-                    )
+            } else if (selectedCategoryKeyFilter == null) {
+                val groupedByCat = filteredTools.groupBy {
+                    CustomCategoryRegistry.resolve(it.tool.categoryName, customCategories).key
                 }
+                groupedByCat.forEach { (catKey, toolsInGroup) ->
+                    val catUi = CustomCategoryRegistry.resolve(catKey, customCategories)
+                    val catColor = Color(catUi.colorHex)
+                    item(key = "cat_group_$catKey") {
+                        Card(
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, catColor.copy(alpha = 0.28f)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                // Compact Category Header without empty space
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(catColor.copy(alpha = 0.10f))
+                                        .clickable { selectedCategoryKeyFilter = catKey }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = catColor,
+                                            modifier = Modifier.size(26.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = catUi.icon,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = catUi.titlePersian,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = catColor.copy(alpha = 0.16f)
+                                    ) {
+                                        Text(
+                                            text = "${JalaliCalendar.toPersianDigits(toolsInGroup.size)} مورد",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = catColor,
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
 
-                // Tool Title & Category / Location details
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = tool.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (tool.modelOrBrand.isNotBlank()) {
-                            Text(
-                                text = tool.modelOrBrand,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                                // Tools inside this category
+                                toolsInGroup.forEachIndexed { index, toolWithServices ->
+                                    if (index > 0) {
+                                        HorizontalDivider(
+                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                            modifier = Modifier.padding(horizontal = 12.dp)
+                                        )
+                                    }
+                                    CompactToolTitleRow(
+                                        toolWithServices = toolWithServices,
+                                        onClick = { onToolClick(toolWithServices.tool) }
+                                    )
+                                }
+                            }
                         }
-                        if (tool.location.isNotBlank()) {
-                            Text(
-                                text = "• ${tool.location}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-
-                // Status Badge Pill
-                StatusBadge(status = overallStatus, daysDiff = daysDiff)
-            }
-
-            // Schedules sub-list container
-            if (toolWithServices.schedules.isNotEmpty()) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    toolWithServices.schedules.forEach { schedule ->
-                        SleekScheduleItemRow(
-                            schedule = schedule,
-                            onMarkDone = { onMarkServiceDone(schedule) },
-                            onEdit = { onEditService(schedule) }
-                        )
                     }
                 }
             } else {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                items(filteredTools, key = { it.tool.id }) { toolWithServices ->
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
                     ) {
-                        Text(
-                            text = "بدون برنامه سرویس",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "+ تعریف سرویس",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .clickable(onClick = onAddNewService)
-                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                        CompactToolTitleRow(
+                            toolWithServices = toolWithServices,
+                            onClick = { onToolClick(toolWithServices.tool) }
                         )
                     }
                 }
@@ -836,165 +784,283 @@ fun SleekToolServiceCard(
 }
 
 @Composable
-fun SleekScheduleItemRow(
-    schedule: ServiceScheduleEntity,
-    onMarkDone: () -> Unit,
-    onEdit: () -> Unit,
+private fun CompactCategoryFilterPill(
+    label: String,
+    isSelected: Boolean,
+    activeColor: Color,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = if (isSelected) activeColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        border = BorderStroke(
+            width = 0.8.dp,
+            color = if (isSelected) activeColor else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        ),
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (isSelected) Color.White else activeColor,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun AlertsSummarySection(
+    activeAlerts: List<HomeAlertItem>,
+    onAlertClick: (HomeAlertItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val now = JalaliCalendar.now()
-    val status = schedule.computeStatus(now)
-    val nextDate = JalaliCalendar.parse(schedule.nextServiceDateJalali)
-    val daysUntilNext = schedule.getDaysUntilNext(now)
-    val relativeTime = if (nextDate != null) JalaliCalendar.getRelativeTimeString(nextDate, now) else "نامشخص"
-    val serviceType = schedule.getServiceType()
-
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = when (status) {
-            ServiceStatus.OVERDUE -> StatusOverdueRedContainer.copy(alpha = 0.65f)
-            ServiceStatus.DUE_SOON -> Color(0xFFCCE8E8).copy(alpha = 0.55f)
-            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-        },
-        border = when (status) {
-            ServiceStatus.OVERDUE -> BorderStroke(1.dp, StatusOverdueRed.copy(alpha = 0.3f))
-            ServiceStatus.DUE_SOON -> BorderStroke(0.5.dp, Color(0xFF006A6A).copy(alpha = 0.25f))
-            else -> null
-        },
-        modifier = modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+    if (activeAlerts.isEmpty()) {
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = StatusUpToDateGreenContainer.copy(alpha = 0.55f),
+            border = BorderStroke(1.dp, StatusUpToDateGreen.copy(alpha = 0.35f)),
+            modifier = modifier.fillMaxWidth()
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = StatusUpToDateGreen,
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = "وضعیت هشدارها: تمامی ابزارها و تجهیزات به‌روز و بدون هشدار فوری هستند.",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = StatusUpToDateGreen
+                )
+            }
+        }
+    } else {
+        val hasOverdue = activeAlerts.any { it.status == ServiceStatus.OVERDUE || it.status == ServiceStatus.EXPIRED_WARRANTY }
+        val borderColor = if (hasOverdue) StatusOverdueRed.copy(alpha = 0.45f) else StatusDueSoonAmber.copy(alpha = 0.45f)
+        val headerBg = if (hasOverdue) StatusOverdueRedContainer.copy(alpha = 0.65f) else StatusDueSoonAmberContainer.copy(alpha = 0.65f)
+        val accentColor = if (hasOverdue) StatusOverdueRed else StatusDueSoonAmber
+
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, borderColor),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(headerBg)
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
+                    Row(
                         modifier = Modifier
-                            .size(30.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(serviceType.badgeColorHex).copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
+                            .weight(1f)
+                            .padding(end = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Icon(
-                            imageVector = serviceType.icon,
+                            imageVector = Icons.Default.Warning,
                             contentDescription = null,
-                            tint = Color(serviceType.badgeColorHex),
-                            modifier = Modifier.size(16.dp)
+                            tint = accentColor,
+                            modifier = Modifier.size(19.dp)
                         )
-                    }
-
-                    Column {
                         Text(
-                            text = schedule.title,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            text = "هشدارهای سرویس و نگهداری (${JalaliCalendar.toPersianDigits(activeAlerts.size)})",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = accentColor,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Text(
-                            text = "${serviceType.titlePersian} • ${schedule.getIntervalType().titlePersian}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
-                }
-
-                // Countdown Relative Time Pill
-                Surface(
-                    shape = CircleShape,
-                    color = when (status) {
-                        ServiceStatus.OVERDUE -> StatusOverdueRed
-                        ServiceStatus.DUE_SOON -> Color(0xFF006A6A)
-                        else -> MaterialTheme.colorScheme.primaryContainer
-                    }
-                ) {
                     Text(
-                        text = relativeTime,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = when (status) {
-                            ServiceStatus.OVERDUE, ServiceStatus.DUE_SOON -> Color.White
-                            else -> MaterialTheme.colorScheme.onPrimaryContainer
-                        },
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
-                    )
-                }
-            }
-
-            // Next Service Date & Quick Action Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CalendarMonth,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        text = "موعد: ${JalaliCalendar.toPersianDigits(schedule.nextServiceDateJalali)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    if (schedule.estimatedCost > 0) {
-                        Text(
-                            text = "• ${JalaliCalendar.formatPrice(schedule.estimatedCost)}",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = "ویرایش",
+                        text = "مشاهده",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable(onClick = onEdit)
-                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                        maxLines = 1,
+                        softWrap = false
                     )
+                }
 
-                    Button(
-                        onClick = onMarkDone,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (status == ServiceStatus.OVERDUE) StatusOverdueRed else MaterialTheme.colorScheme.primary
-                        ),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp)
+                activeAlerts.forEachIndexed { index, alert ->
+                    if (index > 0) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            modifier = Modifier.padding(horizontal = 12.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("ثبت انجام", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                    val isOverdue = alert.status == ServiceStatus.OVERDUE || alert.status == ServiceStatus.EXPIRED_WARRANTY
+                    val itemAccent = if (isOverdue) StatusOverdueRed else StatusDueSoonAmber
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onAlertClick(alert) }
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(itemAccent)
+                            )
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = alert.tool.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "هشدار: ${alert.schedule.title}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = itemAccent
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+                        StatusBadge(status = alert.status, daysDiff = alert.daysUntilNext)
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Clean, uncluttered row displaying ONLY the full tool title and its alert status.
+ * Clicking navigates the user to the tool's dedicated detail screen (`ToolDetailScreen`).
+ */
+@Composable
+private fun CompactToolTitleRow(
+    toolWithServices: ToolWithServices,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val tool = toolWithServices.tool
+    val category = tool.getCategoryUi()
+    val categoryColor = Color(category.colorHex)
+    val now = JalaliCalendar.now()
+    val isVeh = tool.isVehicle()
+    val overallStatus = toolWithServices.getOverallStatus(now)
+    val nearestSchedule = toolWithServices.getNearestUpcomingSchedule(now)
+    val daysDiff = nearestSchedule?.getDaysUntilNext(now, isVeh)
+
+    // Find any active alert titles for this tool
+    val alertSchedules = remember(toolWithServices, now) {
+        val odo = if (isVeh) tool.currentOdometerKm else 0
+        toolWithServices.schedules.filter {
+            val st = it.computeStatus(now, odo, isVeh)
+            st == ServiceStatus.OVERDUE || st == ServiceStatus.DUE_SOON || st == ServiceStatus.EXPIRED_WARRANTY
+        }
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Category Icon
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(categoryColor.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = category.icon,
+                contentDescription = category.titlePersian,
+                tint = categoryColor,
+                modifier = Modifier.size(21.dp)
+            )
+        }
+
+        // Full Tool Title + Alert Indicator (if any)
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text(
+                text = tool.name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            if (alertSchedules.isNotEmpty()) {
+                val alertSummary = alertSchedules.joinToString("، ") { it.title }
+                Text(
+                    text = "هشدار سرویس: $alertSummary",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (overallStatus == ServiceStatus.OVERDUE) StatusOverdueRed else StatusDueSoonAmber,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        // Alert Status Badge + Navigation Arrow
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            StatusBadge(status = overallStatus, daysDiff = daysDiff)
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = "مشاهده صفحه اختصاصی وسیله",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }

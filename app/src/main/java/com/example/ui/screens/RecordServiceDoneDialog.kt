@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,6 +21,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Engineering
 import androidx.compose.material.icons.filled.Info
@@ -59,11 +61,27 @@ import com.example.util.JalaliDate
 @Composable
 fun RecordServiceDoneDialog(
     schedule: ServiceScheduleEntity,
+    isVehicleTool: Boolean = !com.example.data.model.ToolCategory.isExplicitlyNonVehicleText(schedule.toolName),
     onDismissRequest: () -> Unit,
-    onConfirmDone: (performedDateJalali: String, actualCost: Long, technician: String, invoiceNo: String, partsReplaced: String, notes: String) -> Unit
+    onConfirmDone: (
+        performedDateJalali: String,
+        actualCost: Long,
+        technician: String,
+        invoiceNo: String,
+        partsReplaced: String,
+        notes: String,
+        performedOdometerKm: Int
+    ) -> Unit
 ) {
     val now = JalaliCalendar.now()
     var performedDateJalali by remember { mutableStateOf(now.toStandardString()) }
+    var performedOdometerKmStr by remember {
+        mutableStateOf(
+            if (schedule.nextServiceOdometerKm > 0) schedule.nextServiceOdometerKm.toString()
+            else if (schedule.lastServiceOdometerKm > 0) schedule.lastServiceOdometerKm.toString()
+            else ""
+        )
+    }
     var actualCostStr by remember {
         mutableStateOf(if (schedule.estimatedCost > 0) schedule.estimatedCost.toString() else "")
     }
@@ -198,6 +216,32 @@ fun RecordServiceDoneDialog(
                         }
                     }
 
+                    // Performed Odometer (ONLY for vehicles with kilometer intervals)
+                    if (isVehicleTool && schedule.intervalKilometers > 0) {
+                        OutlinedTextField(
+                            value = performedOdometerKmStr,
+                            onValueChange = {
+                                performedOdometerKmStr = JalaliCalendar.toEnglishDigits(it).filter { ch -> ch.isDigit() }
+                            },
+                            label = { Text("کیلومتر خودرو هنگام انجام سرویس") },
+                            placeholder = { Text("مثال: 79000") },
+                            leadingIcon = { Icon(Icons.Default.DirectionsCar, contentDescription = null) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            supportingText = {
+                                val km = performedOdometerKmStr.toIntOrNull() ?: 0
+                                if (km > 0) {
+                                    Text(
+                                        text = "موعد بعدی روی ${JalaliCalendar.toPersianDigits((km + schedule.intervalKilometers).toString())} کیلومتر تنظیم خواهد شد.",
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
                     // Actual Cost Paid
                     OutlinedTextField(
                         value = actualCostStr,
@@ -270,16 +314,23 @@ fun RecordServiceDoneDialog(
                 Button(
                     onClick = {
                         val cost = actualCostStr.toLongOrNull() ?: 0L
+                        val km = if (isVehicleTool && schedule.intervalKilometers > 0) {
+                            performedOdometerKmStr.toIntOrNull() ?: 0
+                        } else {
+                            0
+                        }
                         onConfirmDone(
                             performedDateJalali,
                             cost,
                             technician.trim(),
                             invoiceNumber.trim(),
                             partsReplaced.trim(),
-                            notes.trim()
+                            notes.trim(),
+                            km
                         )
                         onDismissRequest()
                     },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     )
@@ -287,21 +338,24 @@ fun RecordServiceDoneDialog(
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("ثبت در سوابق و تمدید موعد", fontWeight = FontWeight.Bold)
+                    com.example.ui.components.AutoResizedButtonText("ثبت در سوابق و تمدید موعد", maxFontSize = 12.5.sp)
                 }
             },
             dismissButton = {
-                OutlinedButton(onClick = onDismissRequest) {
+                OutlinedButton(
+                    onClick = onDismissRequest,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("انصراف")
+                    com.example.ui.components.AutoResizedButtonText("انصراف", maxFontSize = 12.5.sp)
                 }
             }
         )

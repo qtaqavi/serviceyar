@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,11 +29,10 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -43,6 +43,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -79,7 +80,22 @@ fun JalaliDatePickerDialog(
     }
 
     val currentSelection = JalaliDate(selectedYear, selectedMonth, selectedDay)
-    var yearMenuExpanded by remember { mutableStateOf(false) }
+    var showYearPicker by remember { mutableStateOf(false) }
+    val now = JalaliCalendar.now()
+    val minYear = 1340
+    val maxYear = (now.year + 10).coerceAtLeast(1415)
+    val allYears = remember(minYear, maxYear) {
+        (maxYear downTo minYear).toList()
+    }
+    var selectedDecadeStart by remember { mutableStateOf<Int?>(null) }
+    val filteredYears = remember(allYears, selectedDecadeStart) {
+        val decade = selectedDecadeStart
+        if (decade == null) {
+            allYears
+        } else {
+            allYears.filter { it in decade..(decade + 9) }
+        }
+    }
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         AlertDialog(
@@ -109,29 +125,76 @@ fun JalaliDatePickerDialog(
             text = {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     // Selected Date Banner
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.75f),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "تاریخ انتخاب شده",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                            )
-                            Text(
-                                text = currentSelection.format(includeDayName = true),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
+                            Column {
+                                Text(
+                                    text = "تاریخ انتخاب شده",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                )
+                                Text(
+                                    text = currentSelection.format(includeDayName = true),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (showYearPicker) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.surface
+                                },
+                                modifier = Modifier.clickable {
+                                    showYearPicker = !showYearPicker
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = "سال ${JalaliCalendar.toPersianDigits(selectedYear)}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (showYearPicker) {
+                                            MaterialTheme.colorScheme.onPrimary
+                                        } else {
+                                            MaterialTheme.colorScheme.primary
+                                        }
+                                    )
+                                    Icon(
+                                        imageVector = if (showYearPicker) {
+                                            Icons.Default.KeyboardArrowUp
+                                        } else {
+                                            Icons.Default.KeyboardArrowDown
+                                        },
+                                        contentDescription = "انتخاب سال",
+                                        tint = if (showYearPicker) {
+                                            MaterialTheme.colorScheme.onPrimary
+                                        } else {
+                                            MaterialTheme.colorScheme.primary
+                                        },
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -143,7 +206,6 @@ fun JalaliDatePickerDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    val now = JalaliCalendar.now()
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         contentPadding = PaddingValues(horizontal = 2.dp)
@@ -153,6 +215,7 @@ fun JalaliDatePickerDialog(
                                 selectedYear = now.year
                                 selectedMonth = now.month
                                 selectedDay = now.day
+                                showYearPicker = false
                             }
                         }
                         item {
@@ -161,6 +224,7 @@ fun JalaliDatePickerDialog(
                                 selectedYear = next.year
                                 selectedMonth = next.month
                                 selectedDay = next.day
+                                showYearPicker = false
                             }
                         }
                         item {
@@ -169,6 +233,7 @@ fun JalaliDatePickerDialog(
                                 selectedYear = next.year
                                 selectedMonth = next.month
                                 selectedDay = next.day
+                                showYearPicker = false
                             }
                         }
                         item {
@@ -177,6 +242,7 @@ fun JalaliDatePickerDialog(
                                 selectedYear = next.year
                                 selectedMonth = next.month
                                 selectedDay = next.day
+                                showYearPicker = false
                             }
                         }
                         item {
@@ -185,6 +251,7 @@ fun JalaliDatePickerDialog(
                                 selectedYear = next.year
                                 selectedMonth = next.month
                                 selectedDay = next.day
+                                showYearPicker = false
                             }
                         }
                     }
@@ -200,7 +267,7 @@ fun JalaliDatePickerDialog(
                             onClick = {
                                 if (selectedMonth > 1) {
                                     selectedMonth--
-                                } else {
+                                } else if (selectedYear > minYear) {
                                     selectedMonth = 12
                                     selectedYear--
                                 }
@@ -220,51 +287,55 @@ fun JalaliDatePickerDialog(
                             color = MaterialTheme.colorScheme.primary
                         )
 
-                        // Year Selector with Dropdown
-                        Box {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier.clickable { yearMenuExpanded = true }
+                        // Year Selector Pill (Toggles Year Grid 1340..maxYear)
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (showYearPicker) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            },
+                            modifier = Modifier
+                                .border(
+                                    width = 1.dp,
+                                    color = if (showYearPicker) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.outlineVariant
+                                    },
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                .clickable { showYearPicker = !showYearPicker }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Text(
-                                        text = JalaliCalendar.toPersianDigits(selectedYear),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Icon(
-                                        imageVector = Icons.Default.KeyboardArrowDown,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-
-                            DropdownMenu(
-                                expanded = yearMenuExpanded,
-                                onDismissRequest = { yearMenuExpanded = false }
-                            ) {
-                                val currentJYear = JalaliCalendar.now().year
-                                for (y in (currentJYear - 5)..(currentJYear + 10)) {
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                text = JalaliCalendar.toPersianDigits(y),
-                                                fontWeight = if (y == selectedYear) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (y == selectedYear) MaterialTheme.colorScheme.primary else Color.Unspecified
-                                            )
-                                        },
-                                        onClick = {
-                                            selectedYear = y
-                                            yearMenuExpanded = false
-                                        }
-                                    )
-                                }
+                                Text(
+                                    text = "سال: ${JalaliCalendar.toPersianDigits(selectedYear)}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (showYearPicker) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    }
+                                )
+                                Icon(
+                                    imageVector = if (showYearPicker) {
+                                        Icons.Default.KeyboardArrowUp
+                                    } else {
+                                        Icons.Default.KeyboardArrowDown
+                                    },
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = if (showYearPicker) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
                             }
                         }
 
@@ -273,7 +344,7 @@ fun JalaliDatePickerDialog(
                             onClick = {
                                 if (selectedMonth < 12) {
                                     selectedMonth++
-                                } else {
+                                } else if (selectedYear < maxYear) {
                                     selectedMonth = 1
                                     selectedYear++
                                 }
@@ -286,79 +357,179 @@ fun JalaliDatePickerDialog(
                         }
                     }
 
-                    // Month Names Selector Chips
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        contentPadding = PaddingValues(horizontal = 2.dp)
-                    ) {
-                        items(12) { index ->
-                            val m = index + 1
-                            val isSelected = m == selectedMonth
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { selectedMonth = m },
-                                label = {
-                                    Text(
-                                        text = JalaliCalendar.getMonthName(m),
-                                        fontSize = 12.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                                )
-                            )
+                    if (showYearPicker) {
+                        // Decade Filter Row (1340 to 1410+)
+                        val decades = remember {
+                            listOf(1400, 1390, 1380, 1370, 1360, 1350, 1340)
                         }
-                    }
-
-                    // Day Grid
-                    val maxDays = JalaliCalendar.getDaysInMonth(selectedYear, selectedMonth)
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(7),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        items(maxDays) { index ->
-                            val dayNum = index + 1
-                            val isSelected = dayNum == selectedDay
-                            val isToday = (selectedYear == now.year && selectedMonth == now.month && dayNum == now.day)
-
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        when {
-                                            isSelected -> MaterialTheme.colorScheme.primary
-                                            isToday -> MaterialTheme.colorScheme.secondaryContainer
-                                            else -> Color.Transparent
-                                        }
-                                    )
-                                    .border(
-                                        width = if (isToday && !isSelected) 1.dp else 0.dp,
-                                        color = if (isToday && !isSelected) MaterialTheme.colorScheme.secondary else Color.Transparent,
-                                        shape = CircleShape
-                                    )
-                                    .clickable {
-                                        selectedDay = dayNum
+                        Text(
+                            text = "انتخاب سال (از ۱۳۴۰ تا ${JalaliCalendar.toPersianDigits(maxYear)}):",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            contentPadding = PaddingValues(horizontal = 2.dp)
+                        ) {
+                            item {
+                                FilterChip(
+                                    selected = selectedDecadeStart == null,
+                                    onClick = { selectedDecadeStart = null },
+                                    label = {
+                                        Text(
+                                            text = "همه سال‌ها",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = if (selectedDecadeStart == null) FontWeight.Bold else FontWeight.Normal
+                                        )
                                     }
-                            ) {
-                                Text(
-                                    text = JalaliCalendar.toPersianDigits(dayNum),
-                                    fontSize = 13.sp,
-                                    fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Normal,
-                                    color = when {
-                                        isSelected -> MaterialTheme.colorScheme.onPrimary
-                                        isToday -> MaterialTheme.colorScheme.onSecondaryContainer
-                                        else -> MaterialTheme.colorScheme.onSurface
-                                    },
-                                    textAlign = TextAlign.Center
                                 )
+                            }
+                            items(decades) { decade ->
+                                val isSelected = selectedDecadeStart == decade
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = {
+                                        selectedDecadeStart = if (isSelected) null else decade
+                                    },
+                                    label = {
+                                        Text(
+                                            text = "دهه ${JalaliCalendar.toPersianDigits(decade)}",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    }
+                                )
+                            }
+                        }
+
+                        val yearGridState = rememberLazyGridState()
+                        LaunchedEffect(selectedDecadeStart) {
+                            val idx = filteredYears.indexOf(selectedYear)
+                            if (idx >= 0) {
+                                yearGridState.scrollToItem((idx - 4).coerceAtLeast(0))
+                            }
+                        }
+
+                        LazyVerticalGrid(
+                            state = yearGridState,
+                            columns = GridCells.Fixed(4),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(210.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(filteredYears, key = { it }) { y ->
+                                val isSelected = y == selectedYear
+                                val isCurrentYear = y == now.year
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = when {
+                                        isSelected -> MaterialTheme.colorScheme.primary
+                                        isCurrentYear -> MaterialTheme.colorScheme.secondaryContainer
+                                        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            selectedYear = y
+                                            showYearPicker = false
+                                        }
+                                ) {
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.padding(vertical = 10.dp)
+                                    ) {
+                                        Text(
+                                            text = JalaliCalendar.toPersianDigits(y),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = if (isSelected || isCurrentYear) FontWeight.Bold else FontWeight.Medium,
+                                            color = when {
+                                                isSelected -> MaterialTheme.colorScheme.onPrimary
+                                                isCurrentYear -> MaterialTheme.colorScheme.onSecondaryContainer
+                                                else -> MaterialTheme.colorScheme.onSurface
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Month Names Selector Chips
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            contentPadding = PaddingValues(horizontal = 2.dp)
+                        ) {
+                            items(12) { index ->
+                                val m = index + 1
+                                val isSelected = m == selectedMonth
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { selectedMonth = m },
+                                    label = {
+                                        Text(
+                                            text = JalaliCalendar.getMonthName(m),
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                )
+                            }
+                        }
+
+                        // Day Grid
+                        val maxDays = JalaliCalendar.getDaysInMonth(selectedYear, selectedMonth)
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(7),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(maxDays) { index ->
+                                val dayNum = index + 1
+                                val isSelected = dayNum == selectedDay
+                                val isToday = (selectedYear == now.year && selectedMonth == now.month && dayNum == now.day)
+
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            when {
+                                                isSelected -> MaterialTheme.colorScheme.primary
+                                                isToday -> MaterialTheme.colorScheme.secondaryContainer
+                                                else -> Color.Transparent
+                                            }
+                                        )
+                                        .border(
+                                            width = if (isToday && !isSelected) 1.dp else 0.dp,
+                                            color = if (isToday && !isSelected) MaterialTheme.colorScheme.secondary else Color.Transparent,
+                                            shape = CircleShape
+                                        )
+                                        .clickable {
+                                            selectedDay = dayNum
+                                        }
+                                ) {
+                                    Text(
+                                        text = JalaliCalendar.toPersianDigits(dayNum),
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Normal,
+                                        color = when {
+                                            isSelected -> MaterialTheme.colorScheme.onPrimary
+                                            isToday -> MaterialTheme.colorScheme.onSecondaryContainer
+                                            else -> MaterialTheme.colorScheme.onSurface
+                                        },
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
                             }
                         }
                     }
@@ -370,6 +541,7 @@ fun JalaliDatePickerDialog(
                         onDateSelected(currentSelection)
                         onDismissRequest()
                     },
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     )
@@ -377,21 +549,24 @@ fun JalaliDatePickerDialog(
                     Icon(
                         imageVector = Icons.Default.Check,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("تأیید تاریخ", fontWeight = FontWeight.Bold)
+                    AutoResizedButtonText("تأیید تاریخ", maxFontSize = 12.5.sp)
                 }
             },
             dismissButton = {
-                OutlinedButton(onClick = onDismissRequest) {
+                OutlinedButton(
+                    onClick = onDismissRequest,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("انصراف")
+                    AutoResizedButtonText("انصراف", maxFontSize = 12.5.sp)
                 }
             }
         )

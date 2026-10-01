@@ -45,6 +45,15 @@ interface ToolDao {
     @Query("SELECT COUNT(*) FROM tools")
     suspend fun getToolsCount(): Int
 
+    @Query("SELECT * FROM tools ORDER BY id ASC")
+    suspend fun getAllToolsSnapshot(): List<ToolEntity>
+
+    @Query("SELECT * FROM service_schedules ORDER BY id ASC")
+    suspend fun getAllSchedulesSnapshot(): List<ServiceScheduleEntity>
+
+    @Query("SELECT * FROM service_logs ORDER BY id ASC")
+    suspend fun getAllLogsSnapshot(): List<ServiceLogEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTool(tool: ToolEntity): Long
 
